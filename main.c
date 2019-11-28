@@ -16,7 +16,7 @@ void* allocate_4k_page(uint32_t n) {
 	return _aligned_malloc(HASH_BUCKET_PAGE_SIZE * n, HASH_BUCKET_PAGE_SIZE);
 }
 
-void release_4k_page(void* p) {
+void release_4k_page(void* p) {	 
 	if (!p)
 		return;
 	allocations--;
@@ -26,7 +26,7 @@ void release_4k_page(void* p) {
 int main()
 {
 	
-	uint32_t const size = 1000000;
+	uint32_t const size = 686;
 
 	uint64_t* keys = malloc(size * sizeof(uint64_t));
 	uint64_t* values = malloc(size * sizeof(uint64_t));
@@ -56,9 +56,8 @@ int main()
 
 	for (size_t i = 0; i < size; i++)
 	{
-		uint64_t v;
 		if (!hash_table_put(&ctx, keys[i], values[i])) {
-			printf("Failed to put %i\n", i);
+			printf("Failed to put %llu\n", i);
 			write_dir_graphviz(&ctx, "PUT-ERR");
 			return -1;
 		}
@@ -66,17 +65,51 @@ int main()
 		if (keys[i] == first_key)
 			first_value = values[i];
 #if VALIDATE
+		uint64_t v;
 		if (!hash_table_get(&ctx, first_key, &v) || v != first_value) {
-			printf("Failed to get 0 on %i\n", i);
+			printf("Failed to get 0 on %llu\n", i);
 			write_dir_graphviz(&ctx, "PUT-ERR");
 		}
 #endif
 	}
 
+	for (size_t i = 0; i < 100; i++)
+	{
+		if (!(keys[i] & 1)) {
+			hash_old_value_t old;
+			if (hash_table_delete(&ctx, keys[i], &old)) {
+				printf("Removed: %llu\n", old.value);
+			}
+		}
+
+	}
+
+	write_dir_graphviz(&ctx, "DEL");
+	return;
+}
+
+
+	/*for (size_t i = 0; i < size; i+=3)
+	{
+		hash_old_value_t old;
+		if (hash_table_delete(&ctx, keys[i], &old)) {
+			printf("Removed: %llu\n", old.value);
+		}
+
+	}
 	end = clock();
 	cpu_time_used = ((double)(end - (double)start)) / CLOCKS_PER_SEC;
 
-	printf("<tr><td>%u</td><td>%f</td><td>%f</td><td>%f</td></tr>\n", MAX_CHAIN_LENGTH, cpu_time_used, (cpu_time_used * 1000 * 1000) / size, ((double)allocations * (double)HASH_BUCKET_PAGE_SIZE) / 1024.0 / 1024.0);
+	uint64_t k, v;
+	hash_iteration_state_t state;
+	hash_table_iterate_init(&ctx, &state);
+	while (hash_table_iterate_next(&state, &k, &v)) {
+		printf("%llu = %llu\n", k, v);
+	}
+
+	printf("%llu", ctx.dir->number_of_entries);
+	return;
+	//printf("<tr><td>%u</td><td>%f</td><td>%f</td><td>%f</td></tr>\n", MAX_CHAIN_LENGTH, cpu_time_used, (cpu_time_used * 1000 * 1000) / size, ((double)allocations * (double)HASH_BUCKET_PAGE_SIZE) / 1024.0 / 1024.0);
 
 	//write_dir_graphviz(&ctx, "FINAL");
 	for (size_t x = 0; x < size; x++)
@@ -84,7 +117,7 @@ int main()
 		uint64_t val;
 
 		if (!hash_table_get(&ctx, keys[x], &val)) {
-			printf("Failed to get %i\n", x);
+			printf("Failed to get %llu\n", x);
 			write_dir_graphviz(&ctx, "GET-ERR");
 			return -1;
 		}
@@ -95,5 +128,4 @@ int main()
 	print_hash_stats(&ctx);
 
 
-	return 0;
-}
+	return 0;*/

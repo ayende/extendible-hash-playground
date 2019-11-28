@@ -127,7 +127,7 @@ void print_dir_graphviz_to_file(FILE* fd, hash_ctx_t* ctx) {
 	{
 		if (i != 0)
 			fprintf(fd, "|");
-		fprintf(fd, "<bucket_%Z> %Z - %p ", i, i, ctx->dir->buckets[i]);
+		fprintf(fd, "<bucket_%Iu> %Iu - %p ", i, i, &ctx->dir->buckets[i]);
 		ctx->dir->buckets[i]->seen = false;
 	}
 	fprintf(fd, "\"]\n");
@@ -140,7 +140,7 @@ void print_dir_graphviz_to_file(FILE* fd, hash_ctx_t* ctx) {
 	}
 
 	for (size_t i = 0; i < ctx->dir->number_of_buckets; i++) {
-		fprintf(fd, "\tbuckets:bucket_%Z -> bucket_%p;\n", i, ctx->dir->buckets[i]);
+		fprintf(fd, "\tbuckets:bucket_%Iu -> bucket_%p;\n", i, ctx->dir->buckets[i]);
 	}
 	fprintf(fd, "\ttable->buckets;\n}\n");
 }
@@ -174,36 +174,4 @@ void write_dir_graphviz(hash_ctx_t* ctx, const char* prefix) {
 	sprintf_s(buffer, sizeof buffer, "%s.svg", copy);
 	system(buffer);
 	free(copy);
-}
-
-
-void validate_bucket(hash_ctx_t* ctx, hash_bucket_t* tmp) {
-#if VALIDATE
-	uint64_t mask = ((uint64_t)1 << tmp->depth) - 1;
-	uint64_t first = 0;
-	bool has_first = false;
-
-	for (size_t i = 0; i < NUMBER_OF_HASH_BUCKET_PIECES; i++)
-	{
-		uint8_t* buf = tmp->pieces[i].data;
-		uint8_t* end = buf + tmp->pieces[i].bytes_used;
-		while (buf < end)
-		{
-			uint64_t k, v;
-			varint_decode(&buf, &k);
-			varint_decode(&buf, &v);
-
-			if (has_first == false)
-			{
-				first = k;
-				has_first = true;
-			}
-
-			if ((k & mask) != (first & mask)) {
-				write_dir_graphviz(ctx, "problem");
-				printf("Problem\n");
-			}
-		}
-	}
-#endif
 }
