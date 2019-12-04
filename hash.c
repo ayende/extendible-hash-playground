@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "ehash.h"
 
@@ -324,30 +325,55 @@ static void _hash_table_compact_pages(hash_ctx_t* ctx, uint64_t key, uint32_t bu
 	hash_bucket_t* left = ctx->dir->buckets[bucket_idx];
 	uint32_t sibling_idx = bucket_idx ^ ((uint64_t)1 << (left->depth - 1));
 	hash_bucket_t* right = ctx->dir->buckets[sibling_idx];
-	if (_get_bucket_size(right) + _get_bucket_size(left) < HASH_BUCKET_PAGE_SIZE_MERGE_LIMIT) {
-		hash_bucket_t* merged = _create_hash_bucket(ctx);
-		// we couldn't merge, but that is fine, we don't *have* to
-		if (!merged)
-			return;
+	if (_get_bucket_size(right) + _get_bucket_size(left) > HASH_BUCKET_PAGE_SIZE_MERGE_LIMIT)
+		return; // too big for compaction, we'll try again later
 
-		merged->depth = left->depth < right->depth ? left->depth : right->depth;
-		merged->depth--;
-		if (!_hash_bucket_copy(merged, left) || !_hash_bucket_copy(merged, right)) {
-			// failed to copy, sad, but we'll try again later
-			ctx->release_page(merged);
-			return;
-		}
-		_validate_bucket(ctx, merged);
+	hash_bucket_t* merged = _create_hash_bucket(ctx);
+	// we couldn't merge, out of mem, but that is fine, we don't *have* to
+	if (!merged)
+		return;
 
-		size_t bit = (uint64_t)1 << merged->depth;
+	merged->depth = left->depth < right->depth ? left->depth : right->depth;
+	merged->depth--;
+	if (!_hash_bucket_copy(merged, left) || !_hash_bucket_copy(merged, right)) {
+		// failed to copy, sad, but we'll try again later
+		ctx->release_page(merged);
+		return;
+	}
+	_validate_bucket(ctx, merged);
 
-		for (size_t i = key & (bit - 1); i < ctx->dir->number_of_buckets; i += bit)
-		{
-			ctx->dir->buckets[i] = merged;
-		}
+	size_t bit = (uint64_t)1 << merged->depth;
+	for (size_t i = key & (bit - 1); i < ctx->dir->number_of_buckets; i += bit)
+	{
+		ctx->dir->buckets[i] = merged;
+	}
+	ctx->release_page(right);
+	ctx->release_page(left);
 
-		ctx->release_page(right);
-		ctx->release_page(left);
+	size_t max_depth = 0;
+	for (size_t i = 0; i < ctx->dir->number_of_buckets; i++)
+	{
+		if (ctx->dir->depth > max_depth)
+			max_depth = ctx->dir->depth;
+	}
+	if (max_depth == ctx->dir->depth)
+		return;
+
+	// we can decrease the size of the directory now
+	ctx->dir->depth--;
+	ctx->dir->number_of_buckets /= 2;
+
+	if (ctx->dir->number_of_buckets == 1 || 
+		(size_t)ctx->dir->number_of_buckets * 2 * sizeof(hash_bucket_t*) >= _hash_table_get_directory_capacity(ctx))
+		return; // we are using more than half the space, nothing to touch here
+
+	hash_directory_t* new_dir = ctx->allocate_page(ctx->dir->directory_pages / 2);
+	if (new_dir != NULL) { // if we can't allocate, just ignore this, it is fine
+		size_t dir_size = (size_t)(ctx->dir->directory_pages / 2) * HASH_BUCKET_PAGE_SIZE;
+		memcpy(new_dir, ctx->dir, dir_size);
+		new_dir->directory_pages /= 2;
+		ctx->release_page(ctx->dir);
+		ctx->dir = new_dir;
 	}
 }
 
@@ -571,4 +597,29 @@ bool hash_table_iterate_next(hash_iteration_state_t* state, uint64_t* key, uint6
 
 		return true;
 	}
+}
+
+int compare_ptrs(const void* a, const void* b) {
+	hash_bucket_t* x = *(hash_bucket_t**)a;
+	hash_bucket_t* y = *(hash_bucket_t**)b;
+
+	ptrdiff_t diff = x - y;
+	if (diff)
+		return diff > 0 ? 1 : -1;
+	return 0;
+}
+
+void hash_table_free(hash_ctx_t* ctx) {
+	qsort(ctx->dir->buckets, ctx->dir->number_of_buckets, sizeof(hash_bucket_t*), compare_ptrs);
+	hash_bucket_t* prev = NULL;
+	for (size_t i = 0; i < ctx->dir->number_of_buckets; i++)
+	{
+		if (prev == ctx->dir->buckets[i]) {
+			continue;
+		}
+		prev = ctx->dir->buckets[i];
+		ctx->release_page(ctx->dir->buckets[i]);
+	}
+	ctx->release_page(ctx->dir);
+	ctx->dir = NULL;
 }

@@ -73,18 +73,19 @@ int main()
 #endif
 	}
 
-	for (size_t i = 0; i < 100; i++)
-	{
-		if (!(keys[i] & 1)) {
-			hash_old_value_t old;
-			if (hash_table_delete(&ctx, keys[i], &old)) {
-				printf("Removed: %llu\n", old.value);
-			}
-		}
+	//for (size_t i = 0; i < 100; i++)
+	//{
+	//	if (!(keys[i] & 1)) {
+	//		hash_old_value_t old;
+	//		if (hash_table_delete(&ctx, keys[i], &old)) {
+	//			printf("Removed: %llu\n", old.value);
+	//		}
+	//	}
 
-	}
+	//}
 
-	write_dir_graphviz(&ctx, "DEL");
+	//write_dir_graphviz(&ctx, "DEL");
+	hash_table_free(&ctx);
 	return;
 }
 

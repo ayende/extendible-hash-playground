@@ -83,5 +83,7 @@ bool hash_table_delete(hash_ctx_t* ctx, uint64_t key, hash_old_value_t* old_valu
 
 bool hash_table_init(hash_ctx_t* ctx);
 
+void hash_table_free(hash_ctx_t* ctx);
+
 // --- utils --- 
 void varint_decode(uint8_t** buf, uint64_t* val);
